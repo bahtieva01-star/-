@@ -2,31 +2,49 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { items } from '../ticketsStore.js'
+import { addItem } from '../ticketsStore.js'
 
 const router = useRouter()
 
 const title = ref('')
-const description = ref('')
 const pumpId = ref(1)
+const description = ref('')
+const errors = ref({})
 
 function createTicket() {
-  if (!title.value.trim() || !description.value.trim()) {
-    alert('Заполни название и описание заявки')
+  errors.value = {}
+
+  const cleanTitle = title.value.trim()
+  const cleanDescription = description.value.trim()
+  const numericPumpId = Number(pumpId.value)
+
+  if (cleanTitle.length < 5 || cleanTitle.length > 80) {
+    errors.value.title = 'Название должно содержать от 5 до 80 символов.'
+  }
+
+  if (!Number.isInteger(numericPumpId) || numericPumpId <= 0) {
+    errors.value.pumpId = 'Укажи целый номер насоса больше нуля.'
+  }
+
+  if (cleanDescription.length < 10 || cleanDescription.length > 500) {
+    errors.value.description =
+      'Описание должно содержать от 10 до 500 символов.'
+  }
+
+  if (Object.keys(errors.value).length > 0) {
     return
   }
 
-  const nextId = Math.max(0, ...items.value.map(item => item.id)) + 1
-
-  items.value.push({
-    id: nextId,
-    number: `A-${100 + nextId}`,
-    title: title.value.trim(),
-    description: description.value.trim(),
-    pumpId: Number(pumpId.value),
-    status: 'New',
-    createdAt: new Date().toLocaleString('ru-RU'),
+  addItem({
+    title: cleanTitle,
+    pumpId: numericPumpId,
+    description: cleanDescription,
   })
+
+  title.value = ''
+  pumpId.value = 1
+  description.value = ''
+  errors.value = {}
 
   router.push('/')
 }
@@ -44,24 +62,29 @@ function createTicket() {
         v-model="title"
         type="text"
         placeholder="Например, насос не запускается"
-        required
       />
+      <p v-if="errors.title" class="error">{{ errors.title }}</p>
+
+      <label for="pumpId">Номер насоса</label>
+      <input
+        id="pumpId"
+        v-model.number="pumpId"
+        type="number"
+        min="1"
+        step="1"
+      />
+      <p v-if="errors.pumpId" class="error">{{ errors.pumpId }}</p>
 
       <label for="description">Описание</label>
       <textarea
         id="description"
         v-model="description"
-        placeholder="Опиши проблему"
+        placeholder="Опиши проблему подробнее"
         rows="4"
-        required
       />
-
-      <label for="pumpId">Номер насоса</label>
-      <select id="pumpId" v-model="pumpId">
-        <option :value="1">Насос № 1</option>
-        <option :value="2">Насос № 2</option>
-        <option :value="3">Насос № 3</option>
-      </select>
+      <p v-if="errors.description" class="error">
+        {{ errors.description }}
+      </p>
 
       <button type="submit">Создать заявку</button>
     </form>
@@ -79,7 +102,7 @@ h1 {
   color: #183153;
 }
 
-p {
+.page > p {
   color: #586579;
 }
 
@@ -96,14 +119,19 @@ label {
 }
 
 input,
-textarea,
-select {
+textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 11px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font: inherit;
+}
+
+.error {
+  margin: 0;
+  color: #c62828;
+  font-size: 14px;
 }
 
 button {
