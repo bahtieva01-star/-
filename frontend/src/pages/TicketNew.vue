@@ -1,8 +1,8 @@
-
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { addItem } from '../ticketsStore.js'
+import { items } from '../ticketsStore.js'
+import { createTicket as sendTicket } from '../api/tickets.js'
 
 const router = useRouter()
 
@@ -10,9 +10,14 @@ const title = ref('')
 const pumpId = ref(1)
 const description = ref('')
 const errors = ref({})
+const isSubmitting = ref(false)
+const serverError = ref('')
 
-function createTicket() {
+async function createTicket() {
+  if (isSubmitting.value) return
+
   errors.value = {}
+  serverError.value = ''
 
   const cleanTitle = title.value.trim()
   const cleanDescription = description.value.trim()
@@ -26,27 +31,56 @@ function createTicket() {
     errors.value.pumpId = 'Укажи целый номер насоса больше нуля.'
   }
 
-  if (cleanDescription.length < 10 || cleanDescription.length > 500) {
+  if (
+    cleanDescription.length < 10 ||
+    cleanDescription.length > 500
+  ) {
     errors.value.description =
       'Описание должно содержать от 10 до 500 символов.'
   }
 
-  if (Object.keys(errors.value).length > 0) {
-    return
+  if (Object.keys(errors.value).length > 0) return
+
+  isSubmitting.value = true
+
+  try {
+    const newTicket = await sendTicket({
+      title: cleanTitle,
+      pumpId: numericPumpId,
+      description: cleanDescription,
+    })
+
+
+    const existingIndex = items.value.findIndex(
+      (item) => item.id === newTicket.id,
+    )
+
+    if (existingIndex === -1) {
+      items.value.push(newTicket)
+    } else {
+      items.value[existingIndex] = newTicket
+    }
+
+    title.value = ''
+    pumpId.value = 1
+    description.value = ''
+    errors.value = {}
+
+    await router.push('/')
+  } catch (error) {
+    if (error.status === 400) {
+      serverError.value =
+        error.message || 'Проверь правильность заполнения полей.'
+    } else if (error.status === 500) {
+      serverError.value =
+        'Ошибка сервера. Попробуй отправить заявку позже.'
+    } else {
+      serverError.value =
+        'Не удалось отправить заявку. Проверь соединение и попробуй снова.'
+    }
+  } finally {
+    isSubmitting.value = false
   }
-
-  addItem({
-    title: cleanTitle,
-    pumpId: numericPumpId,
-    description: cleanDescription,
-  })
-
-  title.value = ''
-  pumpId.value = 1
-  description.value = ''
-  errors.value = {}
-
-  router.push('/')
 }
 </script>
 
@@ -61,6 +95,7 @@ function createTicket() {
         id="title"
         v-model="title"
         type="text"
+        maxlength="100"
         placeholder="Например, насос не запускается"
       />
       <p v-if="errors.title" class="error">{{ errors.title }}</p>
@@ -79,6 +114,7 @@ function createTicket() {
       <textarea
         id="description"
         v-model="description"
+        maxlength="500"
         placeholder="Опиши проблему подробнее"
         rows="4"
       />
@@ -86,7 +122,14 @@ function createTicket() {
         {{ errors.description }}
       </p>
 
-      <button type="submit">Создать заявку</button>
+      <p v-if="serverError" class="error server-error" role="alert">
+        {{ serverError }}
+      </p>
+
+      
+      <button type="submit" :disabled="isSubmitting">
+        {{ isSubmitting ? 'Отправка...' : 'Создать заявку' }}
+      </button>
     </form>
   </main>
 </template>
@@ -134,6 +177,12 @@ textarea {
   font-size: 14px;
 }
 
+.server-error {
+  padding: 10px;
+  background: #fef2f2;
+  border-radius: 6px;
+}
+
 button {
   margin-top: 12px;
   padding: 12px;
@@ -145,7 +194,12 @@ button {
   cursor: pointer;
 }
 
-button:hover {
+button:hover:not(:disabled) {
   background: #274b78;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>
